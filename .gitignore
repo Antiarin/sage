@@ -18,5 +18,13 @@ build/
 gen/
 *.generated.c
 
+# Issues (local tracking)
+issues/
+
 # Environment
 .env
+
+
+# Added by cargo
+
+/target

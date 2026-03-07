@@ -1,0 +1,14 @@
+[package]
+name = "sage"
+version = "0.1.0"
+edition = "2024"
+description = "Fast like C. Productive like Python. AI-native."
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = ["precommit-hook", "run-cargo-fmt", "run-cargo-clippy"]
