@@ -23,8 +23,3 @@ issues/
 
 # Environment
 .env
-
-
-# Added by cargo
-
-/target
