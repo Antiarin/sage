@@ -100,7 +100,7 @@
   - Tokenize simple expressions
   - Tokenize function definitions
   - Tokenize string interpolation
-  - Edge cases: nested comments, unicode identifiers
+  - Edge cases: nested comments, underscore identifiers (ASCII only)
   - Error cases: unterminated strings, invalid characters
 
 ---

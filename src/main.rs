@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use sage::lexer::Lexer;
 
 #[derive(Parser)]
 #[command(
@@ -49,7 +50,35 @@ fn main() {
 
     match cli.command {
         Commands::Build { file } => {
-            println!("sage build: not implemented yet (file: {})", file);
+            let source = match std::fs::read_to_string(&file) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Error reading '{}': {}", file, e);
+                    std::process::exit(1);
+                }
+            };
+
+            let mut lexer = Lexer::new(&source);
+            let tokens = lexer.tokenize();
+
+            for error in lexer.errors() {
+                eprintln!("{}", error);
+            }
+
+            if !lexer.errors().is_empty() {
+                std::process::exit(1);
+            }
+
+            println!("Lexed {} tokens from '{}'", tokens.len(), file);
+            for token in &tokens {
+                println!(
+                    "  {:>4}:{:<3} {:?}",
+                    token.span.line, token.span.column, token.kind
+                );
+            }
+
+            // TODO: parser, type checker, codegen
+            println!("\nParser not implemented yet.");
         }
         Commands::Run { file } => {
             println!("sage run: not implemented yet (file: {})", file);
