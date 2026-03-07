@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Build output
+target/
+build/
+*.o
+*.out
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Generated C files
+gen/
+*.generated.c
+
+# Environment
+.env
