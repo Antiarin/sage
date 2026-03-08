@@ -601,3 +601,102 @@ fn parse_multi_generic_type() {
         other => panic!("Expected Let, got {:?}", other),
     }
 }
+
+// -- Task 5: Function definitions and blocks --
+
+#[test]
+fn parse_hello_world() {
+    let stmts = parse_ok("fn main() {\n    println(\"Hello, Sage!\")\n}");
+    assert_eq!(
+        stmts[0],
+        Stmt::FnDef {
+            name: "main".to_string(),
+            params: vec![],
+            return_type: None,
+            body: vec![Stmt::Expression(Expr::FnCall {
+                callee: Box::new(Expr::Identifier("println".to_string())),
+                args: vec![Expr::StringLiteral("Hello, Sage!".to_string())],
+            })],
+            decorators: vec![],
+        }
+    );
+}
+
+#[test]
+fn parse_fn_with_params_and_return() {
+    let stmts = parse_ok("fn add(a: i32, b: i32) -> i32 {\n    return a + b\n}");
+    assert_eq!(
+        stmts[0],
+        Stmt::FnDef {
+            name: "add".to_string(),
+            params: vec![
+                Param {
+                    name: "a".to_string(),
+                    type_ann: Some(Type::Simple("i32".to_string())),
+                },
+                Param {
+                    name: "b".to_string(),
+                    type_ann: Some(Type::Simple("i32".to_string())),
+                },
+            ],
+            return_type: Some(Type::Simple("i32".to_string())),
+            body: vec![Stmt::Return(Some(Expr::BinaryOp {
+                left: Box::new(Expr::Identifier("a".to_string())),
+                op: BinOp::Add,
+                right: Box::new(Expr::Identifier("b".to_string())),
+            }))],
+            decorators: vec![],
+        }
+    );
+}
+
+#[test]
+fn parse_fn_no_return_type() {
+    let stmts = parse_ok("fn greet(name: str) {\n    println(name)\n}");
+    match &stmts[0] {
+        Stmt::FnDef {
+            name,
+            params,
+            return_type,
+            ..
+        } => {
+            assert_eq!(name, "greet");
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "name");
+            assert!(return_type.is_none());
+        }
+        other => panic!("Expected FnDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_fn_multiple_statements() {
+    let stmts = parse_ok("fn calc() -> i32 {\n    let x = 1\n    let y = 2\n    return x + y\n}");
+    match &stmts[0] {
+        Stmt::FnDef { body, .. } => {
+            assert_eq!(body.len(), 3);
+            assert!(matches!(&body[0], Stmt::Let { name, .. } if name == "x"));
+            assert!(matches!(&body[1], Stmt::Let { name, .. } if name == "y"));
+            assert!(matches!(&body[2], Stmt::Return(Some(_))));
+        }
+        other => panic!("Expected FnDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_fn_empty_body() {
+    let stmts = parse_ok("fn noop() {}");
+    match &stmts[0] {
+        Stmt::FnDef { body, .. } => assert!(body.is_empty()),
+        other => panic!("Expected FnDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_multiple_top_level_fns() {
+    let src = "fn foo() {\n    1\n}\nfn bar() {\n    2\n}";
+    let stmts = parse_ok(src);
+    assert_eq!(stmts.len(), 2);
+    assert!(matches!(&stmts[0], Stmt::FnDef { name, .. } if name == "foo"));
+    assert!(matches!(&stmts[1], Stmt::FnDef { name, .. } if name == "bar"));
+}
