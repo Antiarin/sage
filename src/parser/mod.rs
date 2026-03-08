@@ -67,6 +67,9 @@ impl Parser {
             TokenKind::Fn => self.parse_fn(vec![]),
             TokenKind::For => self.parse_for(),
             TokenKind::While => self.parse_while(),
+            TokenKind::Struct => self.parse_struct(),
+            TokenKind::Trait => self.parse_trait(),
+            TokenKind::Impl => self.parse_impl(),
             _ => {
                 let expr = self.parse_expr(0)?;
                 Ok(Stmt::Expression(expr))
@@ -549,6 +552,140 @@ impl Parser {
         let body = self.parse_block()?;
 
         Ok(Stmt::WhileLoop { condition, body })
+    }
+
+    // -- Type definitions --
+
+    fn parse_struct(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'struct'
+
+        let name = match self.peek().clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => return Err(self.error("Expected struct name".to_string())),
+        };
+
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut fields = Vec::new();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::EOF) {
+            let field_name = match self.peek().clone() {
+                TokenKind::Identifier(name) => {
+                    self.advance();
+                    name
+                }
+                _ => return Err(self.error("Expected field name".to_string())),
+            };
+            self.expect(&TokenKind::Colon)?;
+            let type_ann = self.parse_type()?;
+            fields.push(Field {
+                name: field_name,
+                type_ann,
+            });
+
+            if self.at(&TokenKind::Comma) {
+                self.advance();
+            }
+            self.skip_newlines();
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(Stmt::StructDef { name, fields })
+    }
+
+    fn parse_trait(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'trait'
+
+        let name = match self.peek().clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => return Err(self.error("Expected trait name".to_string())),
+        };
+
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut methods = Vec::new();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::EOF) {
+            self.expect(&TokenKind::Fn)?;
+            let method_name = match self.peek().clone() {
+                TokenKind::Identifier(name) => {
+                    self.advance();
+                    name
+                }
+                _ => return Err(self.error("Expected method name".to_string())),
+            };
+
+            let params = self.parse_params()?;
+
+            let return_type = if self.at(&TokenKind::Arrow) {
+                self.advance();
+                Some(self.parse_type()?)
+            } else {
+                None
+            };
+
+            methods.push(FnSignature {
+                name: method_name,
+                params,
+                return_type,
+            });
+            self.skip_newlines();
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(Stmt::TraitDef { name, methods })
+    }
+
+    fn parse_impl(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'impl'
+
+        let first_name = match self.peek().clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => return Err(self.error("Expected type name after 'impl'".to_string())),
+        };
+
+        // Check for "impl Trait for Type"
+        let (trait_name, target) = if self.at(&TokenKind::For) {
+            self.advance();
+            let target = match self.peek().clone() {
+                TokenKind::Identifier(name) => {
+                    self.advance();
+                    name
+                }
+                _ => return Err(self.error("Expected type name after 'for'".to_string())),
+            };
+            (Some(first_name), target)
+        } else {
+            (None, first_name)
+        };
+
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut methods = Vec::new();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::EOF) {
+            match self.peek() {
+                TokenKind::Fn => methods.push(self.parse_fn(vec![])?),
+                _ => return Err(self.error("Expected 'fn' in impl block".to_string())),
+            }
+            self.skip_newlines();
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(Stmt::ImplBlock {
+            trait_name,
+            target,
+            methods,
+        })
     }
 
     fn make_binary(&self, left: Expr, op: &TokenKind, right: Expr) -> Expr {
