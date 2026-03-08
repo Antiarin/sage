@@ -947,3 +947,210 @@ fn parse_impl_trait_for_type() {
         other => panic!("Expected ImplBlock, got {:?}", other),
     }
 }
+
+// -- Task 8: Decorators, imports, closures, concurrency, etc --
+
+#[test]
+fn parse_decorator_simple() {
+    let stmts = parse_ok("@tool\nfn lookup() {}");
+    match &stmts[0] {
+        Stmt::FnDef {
+            name, decorators, ..
+        } => {
+            assert_eq!(name, "lookup");
+            assert_eq!(decorators.len(), 1);
+            assert_eq!(decorators[0].name, "tool");
+            assert!(decorators[0].args.is_empty());
+        }
+        other => panic!("Expected FnDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_decorator_with_args() {
+    let stmts = parse_ok("@tool(description: \"look up a user\")\nfn lookup() {}");
+    match &stmts[0] {
+        Stmt::FnDef { decorators, .. } => {
+            assert_eq!(decorators.len(), 1);
+            assert_eq!(decorators[0].name, "tool");
+            assert_eq!(decorators[0].args.len(), 1);
+            assert_eq!(decorators[0].args[0].0, "description");
+            assert_eq!(
+                decorators[0].args[0].1,
+                Expr::StringLiteral("look up a user".to_string())
+            );
+        }
+        other => panic!("Expected FnDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_multiple_decorators() {
+    let stmts = parse_ok("@mcp_server\n@tool\nfn handler() {}");
+    match &stmts[0] {
+        Stmt::FnDef { decorators, .. } => {
+            assert_eq!(decorators.len(), 2);
+            assert_eq!(decorators[0].name, "mcp_server");
+            assert_eq!(decorators[1].name, "tool");
+        }
+        other => panic!("Expected FnDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_import() {
+    let stmts = parse_ok("import std.io");
+    assert_eq!(
+        stmts[0],
+        Stmt::Import {
+            path: vec!["std".to_string(), "io".to_string()],
+        }
+    );
+}
+
+#[test]
+fn parse_import_deep() {
+    let stmts = parse_ok("import std.collections.HashMap");
+    assert_eq!(
+        stmts[0],
+        Stmt::Import {
+            path: vec![
+                "std".to_string(),
+                "collections".to_string(),
+                "HashMap".to_string(),
+            ],
+        }
+    );
+}
+
+#[test]
+fn parse_try_catch() {
+    let stmts = parse_ok("try {\n    risky()\n} catch e {\n    handle(e)\n}");
+    match &stmts[0] {
+        Stmt::TryCatch {
+            try_block,
+            catch_var,
+            catch_block,
+        } => {
+            assert_eq!(try_block.len(), 1);
+            assert_eq!(catch_var, "e");
+            assert_eq!(catch_block.len(), 1);
+        }
+        other => panic!("Expected TryCatch, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_test_fn() {
+    let stmts = parse_ok("test \"addition works\" {\n    assert_eq(1 + 1, 2)\n}");
+    match &stmts[0] {
+        Stmt::TestFn { name, body } => {
+            assert_eq!(name, "addition works");
+            assert_eq!(body.len(), 1);
+        }
+        other => panic!("Expected TestFn, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_closure_simple() {
+    let expr = parse_single_expr("|x| x + 1");
+    match expr {
+        Expr::Closure { params, body } => {
+            assert_eq!(params.len(), 1);
+            assert_eq!(params[0].name, "x");
+            assert_eq!(body.len(), 1);
+        }
+        other => panic!("Expected Closure, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_closure_multiple_params() {
+    let expr = parse_single_expr("|a, b| a + b");
+    match expr {
+        Expr::Closure { params, .. } => {
+            assert_eq!(params.len(), 2);
+            assert_eq!(params[0].name, "a");
+            assert_eq!(params[1].name, "b");
+        }
+        other => panic!("Expected Closure, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_closure_with_block() {
+    let stmts = parse_ok("|a, b| {\n    return a + b\n}");
+    match &stmts[0] {
+        Stmt::Expression(Expr::Closure { params, body }) => {
+            assert_eq!(params.len(), 2);
+            assert_eq!(body.len(), 1);
+            assert!(matches!(&body[0], Stmt::Return(Some(_))));
+        }
+        other => panic!("Expected Closure, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_list_literal() {
+    let expr = parse_single_expr("[1, 2, 3]");
+    assert_eq!(
+        expr,
+        Expr::ListLiteral(vec![
+            Expr::IntLiteral(1),
+            Expr::IntLiteral(2),
+            Expr::IntLiteral(3),
+        ])
+    );
+}
+
+#[test]
+fn parse_list_empty() {
+    let expr = parse_single_expr("[]");
+    assert_eq!(expr, Expr::ListLiteral(vec![]));
+}
+
+#[test]
+fn parse_string_interpolation() {
+    let expr = parse_single_expr("\"Hello {name}!\"");
+    match expr {
+        Expr::StringInterpolation { parts } => {
+            assert_eq!(parts.len(), 3);
+            assert_eq!(parts[0], StringPart::Literal("Hello ".to_string()));
+            assert_eq!(
+                parts[1],
+                StringPart::Expr(Expr::Identifier("name".to_string()))
+            );
+            assert_eq!(parts[2], StringPart::Literal("!".to_string()));
+        }
+        other => panic!("Expected StringInterpolation, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_spawn() {
+    let expr = parse_single_expr("spawn fetch_data()");
+    match expr {
+        Expr::Spawn(inner) => {
+            assert!(matches!(*inner, Expr::FnCall { .. }));
+        }
+        other => panic!("Expected Spawn, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_parallel() {
+    let stmts = parse_ok("parallel items |item| {\n    process(item)\n}");
+    match &stmts[0] {
+        Stmt::Expression(Expr::Parallel {
+            collection,
+            param,
+            body,
+        }) => {
+            assert_eq!(**collection, Expr::Identifier("items".to_string()));
+            assert_eq!(param, "item");
+            assert!(matches!(**body, Expr::Closure { .. }));
+        }
+        other => panic!("Expected Parallel, got {:?}", other),
+    }
+}
