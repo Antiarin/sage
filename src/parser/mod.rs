@@ -75,10 +75,85 @@ impl Parser {
         loop {
             let op = self.peek().clone();
 
-            // Check for postfix operators (Task 3)
-            // ...
+            // Postfix: function call
+            if op == TokenKind::LParen {
+                if 15 < min_bp {
+                    break;
+                }
+                let args = self.parse_args()?;
+                lhs = Expr::FnCall {
+                    callee: Box::new(lhs),
+                    args,
+                };
+                continue;
+            }
 
-            // Check for infix operators
+            // Postfix: index access
+            if op == TokenKind::LBracket {
+                if 15 < min_bp {
+                    break;
+                }
+                self.advance();
+                let index = self.parse_expr(0)?;
+                self.expect(&TokenKind::RBracket)?;
+                lhs = Expr::Index {
+                    object: Box::new(lhs),
+                    index: Box::new(index),
+                };
+                continue;
+            }
+
+            // Postfix: field access / method call
+            if op == TokenKind::Dot {
+                if 15 < min_bp {
+                    break;
+                }
+                self.advance();
+                let field = match self.peek().clone() {
+                    TokenKind::Identifier(name) => {
+                        self.advance();
+                        name
+                    }
+                    _ => return Err(self.error("Expected field name after '.'".to_string())),
+                };
+                // If followed by '(', it's a method call
+                if *self.peek() == TokenKind::LParen {
+                    let args = self.parse_args()?;
+                    lhs = Expr::MethodCall {
+                        object: Box::new(lhs),
+                        method: field,
+                        args,
+                    };
+                } else {
+                    lhs = Expr::FieldAccess {
+                        object: Box::new(lhs),
+                        field,
+                    };
+                }
+                continue;
+            }
+
+            // Postfix: safe access
+            if op == TokenKind::QuestionDot {
+                if 15 < min_bp {
+                    break;
+                }
+                self.advance();
+                let field = match self.peek().clone() {
+                    TokenKind::Identifier(name) => {
+                        self.advance();
+                        name
+                    }
+                    _ => return Err(self.error("Expected field name after '?.'".to_string())),
+                };
+                lhs = Expr::SafeAccess {
+                    object: Box::new(lhs),
+                    field,
+                };
+                continue;
+            }
+
+            // Infix: binary operators
             if let Some((l_bp, r_bp)) = Self::infix_binding_power(&op) {
                 if l_bp < min_bp {
                     break;
@@ -100,6 +175,20 @@ impl Parser {
         }
 
         Ok(lhs)
+    }
+
+    fn parse_args(&mut self) -> Result<Vec<Expr>, ParseError> {
+        self.expect(&TokenKind::LParen)?;
+        let mut args = Vec::new();
+        if !self.at(&TokenKind::RParen) {
+            args.push(self.parse_expr(0)?);
+            while self.at(&TokenKind::Comma) {
+                self.advance();
+                args.push(self.parse_expr(0)?);
+            }
+        }
+        self.expect(&TokenKind::RParen)?;
+        Ok(args)
     }
 
     fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
