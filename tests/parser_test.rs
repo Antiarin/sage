@@ -831,3 +831,119 @@ fn parse_match_with_commas() {
         other => panic!("Expected Match, got {:?}", other),
     }
 }
+
+// -- Task 7: Struct, trait, impl --
+
+#[test]
+fn parse_struct_def() {
+    let stmts = parse_ok("struct User {\n    name: str\n    age: i32\n}");
+    assert_eq!(
+        stmts[0],
+        Stmt::StructDef {
+            name: "User".to_string(),
+            fields: vec![
+                Field {
+                    name: "name".to_string(),
+                    type_ann: Type::Simple("str".to_string()),
+                },
+                Field {
+                    name: "age".to_string(),
+                    type_ann: Type::Simple("i32".to_string()),
+                },
+            ],
+        }
+    );
+}
+
+#[test]
+fn parse_struct_comma_separated() {
+    let stmts = parse_ok("struct Point { x: f64, y: f64 }");
+    match &stmts[0] {
+        Stmt::StructDef { name, fields } => {
+            assert_eq!(name, "Point");
+            assert_eq!(fields.len(), 2);
+        }
+        other => panic!("Expected StructDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_struct_empty() {
+    let stmts = parse_ok("struct Empty {}");
+    assert_eq!(
+        stmts[0],
+        Stmt::StructDef {
+            name: "Empty".to_string(),
+            fields: vec![],
+        }
+    );
+}
+
+#[test]
+fn parse_trait_def() {
+    let stmts = parse_ok("trait Greetable {\n    fn greet(self) -> str\n}");
+    assert_eq!(
+        stmts[0],
+        Stmt::TraitDef {
+            name: "Greetable".to_string(),
+            methods: vec![FnSignature {
+                name: "greet".to_string(),
+                params: vec![Param {
+                    name: "self".to_string(),
+                    type_ann: None,
+                }],
+                return_type: Some(Type::Simple("str".to_string())),
+            }],
+        }
+    );
+}
+
+#[test]
+fn parse_trait_multiple_methods() {
+    let stmts = parse_ok("trait Animal {\n    fn name(self) -> str\n    fn speak(self) -> str\n}");
+    match &stmts[0] {
+        Stmt::TraitDef { methods, .. } => {
+            assert_eq!(methods.len(), 2);
+            assert_eq!(methods[0].name, "name");
+            assert_eq!(methods[1].name, "speak");
+        }
+        other => panic!("Expected TraitDef, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_impl_block() {
+    let stmts = parse_ok("impl User {\n    fn new(name: str) -> User {\n        name\n    }\n}");
+    match &stmts[0] {
+        Stmt::ImplBlock {
+            trait_name,
+            target,
+            methods,
+        } => {
+            assert!(trait_name.is_none());
+            assert_eq!(target, "User");
+            assert_eq!(methods.len(), 1);
+            assert!(matches!(&methods[0], Stmt::FnDef { name, .. } if name == "new"));
+        }
+        other => panic!("Expected ImplBlock, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_impl_trait_for_type() {
+    let stmts = parse_ok(
+        "impl Greetable for User {\n    fn greet(self) -> str {\n        self.name\n    }\n}",
+    );
+    match &stmts[0] {
+        Stmt::ImplBlock {
+            trait_name,
+            target,
+            methods,
+        } => {
+            assert_eq!(*trait_name, Some("Greetable".to_string()));
+            assert_eq!(target, "User");
+            assert_eq!(methods.len(), 1);
+        }
+        other => panic!("Expected ImplBlock, got {:?}", other),
+    }
+}
