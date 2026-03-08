@@ -45,7 +45,7 @@ impl Parser {
                 Ok(stmt) => stmts.push(stmt),
                 Err(e) => {
                     self.errors.push(e);
-                    break;
+                    self.synchronize();
                 }
             }
             self.skip_newlines();
@@ -978,6 +978,37 @@ impl Parser {
             TokenKind::Plus | TokenKind::Minus => Some((11, 12)),
             TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Some((13, 14)),
             _ => None,
+        }
+    }
+
+    // -- Error recovery --
+
+    fn synchronize(&mut self) {
+        // Skip tokens until we find a statement boundary
+        loop {
+            match self.peek() {
+                TokenKind::EOF => break,
+                // Statement-starting keywords
+                TokenKind::Let
+                | TokenKind::Fn
+                | TokenKind::Struct
+                | TokenKind::Trait
+                | TokenKind::Impl
+                | TokenKind::For
+                | TokenKind::While
+                | TokenKind::Return
+                | TokenKind::Import
+                | TokenKind::Try
+                | TokenKind::Test
+                | TokenKind::At => break,
+                TokenKind::Newline => {
+                    self.advance();
+                    break;
+                }
+                _ => {
+                    self.advance();
+                }
+            }
         }
     }
 

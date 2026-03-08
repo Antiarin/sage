@@ -1154,3 +1154,42 @@ fn parse_parallel() {
         other => panic!("Expected Parallel, got {:?}", other),
     }
 }
+
+// -- Task 9: Error recovery --
+
+#[test]
+fn parse_error_unexpected_token() {
+    let (_, errors) = parse("let = 42");
+    assert!(!errors.is_empty());
+    assert!(errors[0].message.contains("Expected variable name"));
+}
+
+#[test]
+fn parse_error_missing_rbrace() {
+    let (_, errors) = parse("fn main() { let x = 1");
+    assert!(!errors.is_empty());
+}
+
+#[test]
+fn parse_error_recovery_continues() {
+    // First statement has an error, but second should still parse
+    let (stmts, errors) = parse("let = 42\nlet y = 10");
+    assert!(!errors.is_empty());
+    // After recovery, the second let should parse
+    assert!(
+        stmts
+            .iter()
+            .any(|s| matches!(s, Stmt::Let { name, .. } if name == "y")),
+        "Should recover and parse second let statement"
+    );
+}
+
+#[test]
+fn parse_multiple_errors() {
+    let (_, errors) = parse("let = 1\nlet = 2");
+    assert!(
+        errors.len() >= 2,
+        "Should report multiple errors, got {}",
+        errors.len()
+    );
+}

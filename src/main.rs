@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use sage::lexer::Lexer;
+use sage::parser;
 
 #[derive(Parser)]
 #[command(
@@ -69,16 +70,24 @@ fn main() {
                 std::process::exit(1);
             }
 
-            println!("Lexed {} tokens from '{}'", tokens.len(), file);
-            for token in &tokens {
-                println!(
-                    "  {:>4}:{:<3} {:?}",
-                    token.span.line, token.span.column, token.kind
-                );
+            let mut parser = parser::Parser::new(tokens);
+            let ast = parser.parse();
+
+            for error in parser.errors() {
+                eprintln!("{}", error);
             }
 
-            // TODO: parser, type checker, codegen
-            println!("\nParser not implemented yet.");
+            if !parser.errors().is_empty() {
+                std::process::exit(1);
+            }
+
+            println!("Parsed {} top-level statements from '{}'", ast.len(), file);
+            for stmt in &ast {
+                println!("  {:?}", stmt);
+            }
+
+            // TODO: type checker, codegen
+            println!("\nType checker not implemented yet.");
         }
         Commands::Run { file } => {
             println!("sage run: not implemented yet (file: {})", file);
