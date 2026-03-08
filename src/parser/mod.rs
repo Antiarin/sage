@@ -3,6 +3,7 @@
 pub mod ast;
 
 use crate::lexer::token::{Span, Token, TokenKind};
+use ast::*;
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
@@ -35,17 +36,172 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Vec<ast::Stmt> {
-        let stmts = Vec::new();
+    pub fn parse(&mut self) -> Vec<Stmt> {
+        let mut stmts = Vec::new();
 
         self.skip_newlines();
-        // Statement parsing will be added in Task 2+
+        while !self.at(&TokenKind::EOF) {
+            match self.parse_statement() {
+                Ok(stmt) => stmts.push(stmt),
+                Err(e) => {
+                    self.errors.push(e);
+                    break;
+                }
+            }
+            self.skip_newlines();
+        }
 
         stmts
     }
 
     pub fn errors(&self) -> &[ParseError] {
         &self.errors
+    }
+
+    // -- Statement parsing --
+
+    fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+        let expr = self.parse_expr(0)?;
+        Ok(Stmt::Expression(expr))
+    }
+
+    // -- Pratt expression parsing --
+
+    fn parse_expr(&mut self, min_bp: u8) -> Result<Expr, ParseError> {
+        // Parse prefix (nud)
+        let mut lhs = self.parse_prefix()?;
+
+        // Parse infix/postfix (led)
+        loop {
+            let op = self.peek().clone();
+
+            // Check for postfix operators (Task 3)
+            // ...
+
+            // Check for infix operators
+            if let Some((l_bp, r_bp)) = Self::infix_binding_power(&op) {
+                if l_bp < min_bp {
+                    break;
+                }
+                self.advance();
+
+                let rhs = self.parse_expr(r_bp)?;
+                lhs = if op == TokenKind::DoubleQuestion {
+                    Expr::NullCoalesce {
+                        left: Box::new(lhs),
+                        right: Box::new(rhs),
+                    }
+                } else {
+                    self.make_binary(lhs, &op, rhs)
+                };
+            } else {
+                break;
+            }
+        }
+
+        Ok(lhs)
+    }
+
+    fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
+        match self.peek().clone() {
+            TokenKind::IntLiteral(n) => {
+                self.advance();
+                Ok(Expr::IntLiteral(n))
+            }
+            TokenKind::FloatLiteral(n) => {
+                self.advance();
+                Ok(Expr::FloatLiteral(n))
+            }
+            TokenKind::StringLiteral(s) => {
+                self.advance();
+                Ok(Expr::StringLiteral(s))
+            }
+            TokenKind::True => {
+                self.advance();
+                Ok(Expr::BoolLiteral(true))
+            }
+            TokenKind::False => {
+                self.advance();
+                Ok(Expr::BoolLiteral(false))
+            }
+            TokenKind::Identifier(name) => {
+                self.advance();
+                Ok(Expr::Identifier(name))
+            }
+            TokenKind::LParen => {
+                self.advance();
+                let expr = self.parse_expr(0)?;
+                self.expect(&TokenKind::RParen)?;
+                Ok(expr)
+            }
+            TokenKind::Minus => {
+                self.advance();
+                let bp = Self::prefix_binding_power(&TokenKind::Minus);
+                let expr = self.parse_expr(bp)?;
+                Ok(Expr::UnaryOp {
+                    op: UnOp::Neg,
+                    expr: Box::new(expr),
+                })
+            }
+            TokenKind::Not => {
+                self.advance();
+                let bp = Self::prefix_binding_power(&TokenKind::Not);
+                let expr = self.parse_expr(bp)?;
+                Ok(Expr::UnaryOp {
+                    op: UnOp::Not,
+                    expr: Box::new(expr),
+                })
+            }
+            _ => Err(self.error(format!("Expected expression, found {:?}", self.peek()))),
+        }
+    }
+
+    fn make_binary(&self, left: Expr, op: &TokenKind, right: Expr) -> Expr {
+        let bin_op = match op {
+            TokenKind::Plus => BinOp::Add,
+            TokenKind::Minus => BinOp::Sub,
+            TokenKind::Star => BinOp::Mul,
+            TokenKind::Slash => BinOp::Div,
+            TokenKind::Percent => BinOp::Mod,
+            TokenKind::Eq => BinOp::Eq,
+            TokenKind::NotEq => BinOp::NotEq,
+            TokenKind::Lt => BinOp::Lt,
+            TokenKind::Gt => BinOp::Gt,
+            TokenKind::LtEq => BinOp::LtEq,
+            TokenKind::GtEq => BinOp::GtEq,
+            TokenKind::And => BinOp::And,
+            TokenKind::Or => BinOp::Or,
+            _ => unreachable!("Not a binary operator: {:?}", op),
+        };
+        Expr::BinaryOp {
+            left: Box::new(left),
+            op: bin_op,
+            right: Box::new(right),
+        }
+    }
+
+    // Binding power for prefix (unary) operators
+    fn prefix_binding_power(op: &TokenKind) -> u8 {
+        match op {
+            TokenKind::Minus | TokenKind::Not => 13,
+            _ => 0,
+        }
+    }
+
+    // Binding power for infix (binary) operators: (left_bp, right_bp)
+    // Left-associative: right_bp = left_bp + 1
+    // Right-associative: right_bp = left_bp - 1
+    fn infix_binding_power(op: &TokenKind) -> Option<(u8, u8)> {
+        match op {
+            TokenKind::DoubleQuestion => Some((2, 1)), // right-assoc
+            TokenKind::Or => Some((3, 4)),
+            TokenKind::And => Some((5, 6)),
+            TokenKind::Eq | TokenKind::NotEq => Some((7, 8)),
+            TokenKind::Lt | TokenKind::Gt | TokenKind::LtEq | TokenKind::GtEq => Some((7, 8)),
+            TokenKind::Plus | TokenKind::Minus => Some((9, 10)),
+            TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Some((11, 12)),
+            _ => None,
+        }
     }
 
     // -- Token cursor methods --
