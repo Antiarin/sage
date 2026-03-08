@@ -64,6 +64,7 @@ impl Parser {
         match self.peek() {
             TokenKind::Let => self.parse_let(),
             TokenKind::Return => self.parse_return(),
+            TokenKind::Fn => self.parse_fn(vec![]),
             _ => {
                 let expr = self.parse_expr(0)?;
                 Ok(Stmt::Expression(expr))
@@ -120,6 +121,86 @@ impl Parser {
 
         let expr = self.parse_expr(0)?;
         Ok(Stmt::Return(Some(expr)))
+    }
+
+    fn parse_fn(&mut self, decorators: Vec<Decorator>) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'fn'
+
+        let name = match self.peek().clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => return Err(self.error("Expected function name after 'fn'".to_string())),
+        };
+
+        let params = self.parse_params()?;
+
+        let return_type = if self.at(&TokenKind::Arrow) {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        let body = self.parse_block()?;
+
+        Ok(Stmt::FnDef {
+            name,
+            params,
+            return_type,
+            body,
+            decorators,
+        })
+    }
+
+    fn parse_params(&mut self) -> Result<Vec<Param>, ParseError> {
+        self.expect(&TokenKind::LParen)?;
+        let mut params = Vec::new();
+
+        if !self.at(&TokenKind::RParen) {
+            params.push(self.parse_param()?);
+            while self.at(&TokenKind::Comma) {
+                self.advance();
+                params.push(self.parse_param()?);
+            }
+        }
+
+        self.expect(&TokenKind::RParen)?;
+        Ok(params)
+    }
+
+    fn parse_param(&mut self) -> Result<Param, ParseError> {
+        let name = match self.peek().clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => return Err(self.error("Expected parameter name".to_string())),
+        };
+
+        let type_ann = if self.at(&TokenKind::Colon) {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        Ok(Param { name, type_ann })
+    }
+
+    fn parse_block(&mut self) -> Result<Vec<Stmt>, ParseError> {
+        self.expect(&TokenKind::LBrace)?;
+        let mut stmts = Vec::new();
+
+        self.skip_newlines();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::EOF) {
+            stmts.push(self.parse_statement()?);
+            self.skip_newlines();
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(stmts)
     }
 
     // -- Type parsing --
