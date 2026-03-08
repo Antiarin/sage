@@ -423,3 +423,181 @@ fn parse_call_on_field() {
         }
     );
 }
+
+// -- Task 4: Let, return, type annotations --
+
+#[test]
+fn parse_let_with_type() {
+    let stmts = parse_ok("let x: i32 = 42");
+    assert_eq!(
+        stmts[0],
+        Stmt::Let {
+            name: "x".to_string(),
+            mutable: false,
+            type_ann: Some(Type::Simple("i32".to_string())),
+            value: Expr::IntLiteral(42),
+        }
+    );
+}
+
+#[test]
+fn parse_let_mutable() {
+    let stmts = parse_ok("let mut count = 0");
+    assert_eq!(
+        stmts[0],
+        Stmt::Let {
+            name: "count".to_string(),
+            mutable: true,
+            type_ann: None,
+            value: Expr::IntLiteral(0),
+        }
+    );
+}
+
+#[test]
+fn parse_let_inferred() {
+    let stmts = parse_ok("let name = \"Alice\"");
+    assert_eq!(
+        stmts[0],
+        Stmt::Let {
+            name: "name".to_string(),
+            mutable: false,
+            type_ann: None,
+            value: Expr::StringLiteral("Alice".to_string()),
+        }
+    );
+}
+
+#[test]
+fn parse_let_with_expression() {
+    let stmts = parse_ok("let sum = a + b");
+    assert_eq!(
+        stmts[0],
+        Stmt::Let {
+            name: "sum".to_string(),
+            mutable: false,
+            type_ann: None,
+            value: Expr::BinaryOp {
+                left: Box::new(Expr::Identifier("a".to_string())),
+                op: BinOp::Add,
+                right: Box::new(Expr::Identifier("b".to_string())),
+            },
+        }
+    );
+}
+
+#[test]
+fn parse_return_value() {
+    let stmts = parse_ok("return x + 1");
+    assert_eq!(
+        stmts[0],
+        Stmt::Return(Some(Expr::BinaryOp {
+            left: Box::new(Expr::Identifier("x".to_string())),
+            op: BinOp::Add,
+            right: Box::new(Expr::IntLiteral(1)),
+        }))
+    );
+}
+
+#[test]
+fn parse_return_void() {
+    let stmts = parse_ok("return");
+    assert_eq!(stmts[0], Stmt::Return(None));
+}
+
+#[test]
+fn parse_expression_statement() {
+    let stmts = parse_ok("println(\"hello\")");
+    assert_eq!(
+        stmts[0],
+        Stmt::Expression(Expr::FnCall {
+            callee: Box::new(Expr::Identifier("println".to_string())),
+            args: vec![Expr::StringLiteral("hello".to_string())],
+        })
+    );
+}
+
+#[test]
+fn parse_nullable_type() {
+    let stmts = parse_ok("let user: User? = find()");
+    match &stmts[0] {
+        Stmt::Let { type_ann, .. } => {
+            assert_eq!(
+                *type_ann,
+                Some(Type::Nullable(Box::new(Type::Simple("User".to_string()))))
+            );
+        }
+        other => panic!("Expected Let, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_generic_type() {
+    let stmts = parse_ok("let items: Vec<i32> = create()");
+    match &stmts[0] {
+        Stmt::Let { type_ann, .. } => {
+            assert_eq!(
+                *type_ann,
+                Some(Type::Generic {
+                    name: "Vec".to_string(),
+                    params: vec![Type::Simple("i32".to_string())],
+                })
+            );
+        }
+        other => panic!("Expected Let, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_reference_type() {
+    let stmts = parse_ok("let name: &str = get()");
+    match &stmts[0] {
+        Stmt::Let { type_ann, .. } => {
+            assert_eq!(
+                *type_ann,
+                Some(Type::Reference {
+                    mutable: false,
+                    inner: Box::new(Type::Simple("str".to_string())),
+                })
+            );
+        }
+        other => panic!("Expected Let, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_mutable_reference_type() {
+    let stmts = parse_ok("let data: &mut i32 = get()");
+    match &stmts[0] {
+        Stmt::Let { type_ann, .. } => {
+            assert_eq!(
+                *type_ann,
+                Some(Type::Reference {
+                    mutable: true,
+                    inner: Box::new(Type::Simple("i32".to_string())),
+                })
+            );
+        }
+        other => panic!("Expected Let, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_multi_generic_type() {
+    let stmts = parse_ok("let result: Result<i32, str> = try_it()");
+    match &stmts[0] {
+        Stmt::Let { type_ann, .. } => {
+            assert_eq!(
+                *type_ann,
+                Some(Type::Generic {
+                    name: "Result".to_string(),
+                    params: vec![
+                        Type::Simple("i32".to_string()),
+                        Type::Simple("str".to_string()),
+                    ],
+                })
+            );
+        }
+        other => panic!("Expected Let, got {:?}", other),
+    }
+}

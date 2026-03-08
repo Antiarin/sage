@@ -61,8 +61,146 @@ impl Parser {
     // -- Statement parsing --
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+        match self.peek() {
+            TokenKind::Let => self.parse_let(),
+            TokenKind::Return => self.parse_return(),
+            _ => {
+                let expr = self.parse_expr(0)?;
+                Ok(Stmt::Expression(expr))
+            }
+        }
+    }
+
+    fn parse_let(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'let'
+
+        let mutable = if self.at(&TokenKind::Mut) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        let name = match self.peek().clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => return Err(self.error("Expected variable name after 'let'".to_string())),
+        };
+
+        let type_ann = if self.at(&TokenKind::Colon) {
+            self.advance();
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.expect(&TokenKind::Assign)?;
+        let value = self.parse_expr(0)?;
+
+        Ok(Stmt::Let {
+            name,
+            mutable,
+            type_ann,
+            value,
+        })
+    }
+
+    fn parse_return(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'return'
+
+        // return with no value: next token is newline, }, or EOF
+        if matches!(
+            self.peek(),
+            TokenKind::Newline | TokenKind::RBrace | TokenKind::EOF
+        ) {
+            return Ok(Stmt::Return(None));
+        }
+
         let expr = self.parse_expr(0)?;
-        Ok(Stmt::Expression(expr))
+        Ok(Stmt::Return(Some(expr)))
+    }
+
+    // -- Type parsing --
+
+    fn parse_type(&mut self) -> Result<Type, ParseError> {
+        let ty = match self.peek().clone() {
+            TokenKind::Ampersand => {
+                self.advance();
+                let mutable = if self.at(&TokenKind::Mut) {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+                let inner = self.parse_type()?;
+                Type::Reference {
+                    mutable,
+                    inner: Box::new(inner),
+                }
+            }
+            TokenKind::Identifier(name) => {
+                self.advance();
+                self.parse_type_suffix(name)?
+            }
+            // Type keywords: i32, i64, f32, f64, str, bool
+            TokenKind::I32 => {
+                self.advance();
+                self.parse_type_suffix("i32".to_string())?
+            }
+            TokenKind::I64 => {
+                self.advance();
+                self.parse_type_suffix("i64".to_string())?
+            }
+            TokenKind::F32 => {
+                self.advance();
+                self.parse_type_suffix("f32".to_string())?
+            }
+            TokenKind::F64 => {
+                self.advance();
+                self.parse_type_suffix("f64".to_string())?
+            }
+            TokenKind::Str => {
+                self.advance();
+                self.parse_type_suffix("str".to_string())?
+            }
+            TokenKind::Bool => {
+                self.advance();
+                self.parse_type_suffix("bool".to_string())?
+            }
+            _ => return Err(self.error(format!("Expected type, found {:?}", self.peek()))),
+        };
+
+        Ok(ty)
+    }
+
+    fn parse_type_suffix(&mut self, name: String) -> Result<Type, ParseError> {
+        // Check for generic params: Name<T, U>
+        if self.at(&TokenKind::Lt) {
+            self.advance();
+            let mut params = vec![self.parse_type()?];
+            while self.at(&TokenKind::Comma) {
+                self.advance();
+                params.push(self.parse_type()?);
+            }
+            self.expect(&TokenKind::Gt)?;
+            let ty = Type::Generic { name, params };
+            // Check for ? after generic
+            if self.at(&TokenKind::QuestionMark) {
+                self.advance();
+                return Ok(Type::Nullable(Box::new(ty)));
+            }
+            return Ok(ty);
+        }
+
+        // Check for nullable: Name?
+        if self.at(&TokenKind::QuestionMark) {
+            self.advance();
+            return Ok(Type::Nullable(Box::new(Type::Simple(name))));
+        }
+
+        Ok(Type::Simple(name))
     }
 
     // -- Pratt expression parsing --
