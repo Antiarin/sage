@@ -1,5 +1,7 @@
 // AST node types for the Sage parser
 
+use crate::lexer::token::Span;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinOp {
     Add,
@@ -79,8 +81,37 @@ pub enum StringPart {
     Expr(Expr),
 }
 
+/// Expression node: a kind paired with its source location.
+/// PartialEq compares only the kind (ignoring span), so tests can
+/// construct values with `Expr::dummy(kind)` and compare freely.
+#[derive(Debug, Clone)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
+
+impl Expr {
+    pub fn new(kind: ExprKind, span: Span) -> Self {
+        Expr { kind, span }
+    }
+
+    /// Create an Expr with a dummy span (for use in tests).
+    pub fn dummy(kind: ExprKind) -> Self {
+        Expr {
+            kind,
+            span: Span::default(),
+        }
+    }
+}
+
+impl PartialEq for Expr {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr {
+pub enum ExprKind {
     IntLiteral(i64),
     FloatLiteral(f64),
     StringLiteral(String),
@@ -154,8 +185,35 @@ pub enum Expr {
     },
 }
 
+/// Statement node: a kind paired with its source location.
+/// PartialEq compares only the kind (ignoring span).
+#[derive(Debug, Clone)]
+pub struct Stmt {
+    pub kind: StmtKind,
+    pub span: Span,
+}
+
+impl Stmt {
+    pub fn new(kind: StmtKind, span: Span) -> Self {
+        Stmt { kind, span }
+    }
+
+    pub fn dummy(kind: StmtKind) -> Self {
+        Stmt {
+            kind,
+            span: Span::default(),
+        }
+    }
+}
+
+impl PartialEq for Stmt {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum Stmt {
+pub enum StmtKind {
     Let {
         name: String,
         mutable: bool,
