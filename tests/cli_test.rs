@@ -13,15 +13,15 @@ fn version_prints_sage() {
 }
 
 #[test]
-fn build_lexes_hello_sg() {
+fn build_parses_hello_sg() {
     let output = Command::new(env!("CARGO_BIN_EXE_sage"))
         .args(["build", "examples/hello.sg"])
         .output()
         .expect("failed to run sage");
 
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("Lexed"));
-    assert!(stdout.contains("tokens"));
+    assert!(stdout.contains("Parsed"));
+    assert!(stdout.contains("statements"));
 }
 
 #[test]
