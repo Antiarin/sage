@@ -83,7 +83,7 @@ fn main() {
 
             println!("Parsed {} top-level statements from '{}'", ast.len(), file);
             for stmt in &ast {
-                println!("  {:?}", stmt);
+                println!("  {:?}", stmt.kind);
             }
 
             // TODO: type checker, codegen
