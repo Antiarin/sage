@@ -272,3 +272,154 @@ fn parse_unary_in_binary() {
         }
     );
 }
+
+// -- Task 3: Postfix expressions and function calls --
+
+#[test]
+fn parse_function_call_no_args() {
+    let expr = parse_single_expr("foo()");
+    assert_eq!(
+        expr,
+        Expr::FnCall {
+            callee: Box::new(Expr::Identifier("foo".to_string())),
+            args: vec![],
+        }
+    );
+}
+
+#[test]
+fn parse_function_call_one_arg() {
+    let expr = parse_single_expr("println(\"hello\")");
+    assert_eq!(
+        expr,
+        Expr::FnCall {
+            callee: Box::new(Expr::Identifier("println".to_string())),
+            args: vec![Expr::StringLiteral("hello".to_string())],
+        }
+    );
+}
+
+#[test]
+fn parse_function_call_multiple_args() {
+    let expr = parse_single_expr("add(1, 2)");
+    assert_eq!(
+        expr,
+        Expr::FnCall {
+            callee: Box::new(Expr::Identifier("add".to_string())),
+            args: vec![Expr::IntLiteral(1), Expr::IntLiteral(2)],
+        }
+    );
+}
+
+#[test]
+fn parse_field_access() {
+    let expr = parse_single_expr("user.name");
+    assert_eq!(
+        expr,
+        Expr::FieldAccess {
+            object: Box::new(Expr::Identifier("user".to_string())),
+            field: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn parse_chained_field_access() {
+    // a.b.c -> FieldAccess { object: FieldAccess { object: a, field: "b" }, field: "c" }
+    let expr = parse_single_expr("a.b.c");
+    assert_eq!(
+        expr,
+        Expr::FieldAccess {
+            object: Box::new(Expr::FieldAccess {
+                object: Box::new(Expr::Identifier("a".to_string())),
+                field: "b".to_string(),
+            }),
+            field: "c".to_string(),
+        }
+    );
+}
+
+#[test]
+fn parse_safe_access() {
+    let expr = parse_single_expr("user?.name");
+    assert_eq!(
+        expr,
+        Expr::SafeAccess {
+            object: Box::new(Expr::Identifier("user".to_string())),
+            field: "name".to_string(),
+        }
+    );
+}
+
+#[test]
+fn parse_method_call() {
+    let expr = parse_single_expr("list.push(42)");
+    assert_eq!(
+        expr,
+        Expr::MethodCall {
+            object: Box::new(Expr::Identifier("list".to_string())),
+            method: "push".to_string(),
+            args: vec![Expr::IntLiteral(42)],
+        }
+    );
+}
+
+#[test]
+fn parse_index_access() {
+    let expr = parse_single_expr("items[0]");
+    assert_eq!(
+        expr,
+        Expr::Index {
+            object: Box::new(Expr::Identifier("items".to_string())),
+            index: Box::new(Expr::IntLiteral(0)),
+        }
+    );
+}
+
+#[test]
+fn parse_null_coalesce() {
+    let expr = parse_single_expr("user?.name ?? \"Unknown\"");
+    assert_eq!(
+        expr,
+        Expr::NullCoalesce {
+            left: Box::new(Expr::SafeAccess {
+                object: Box::new(Expr::Identifier("user".to_string())),
+                field: "name".to_string(),
+            }),
+            right: Box::new(Expr::StringLiteral("Unknown".to_string())),
+        }
+    );
+}
+
+#[test]
+fn parse_chained_method_calls() {
+    // a.foo().bar() -> MethodCall { object: FnCall on FieldAccess... }
+    // Actually: a.foo() is MethodCall, then .bar() is another MethodCall on the result
+    let expr = parse_single_expr("a.foo().bar()");
+    assert_eq!(
+        expr,
+        Expr::MethodCall {
+            object: Box::new(Expr::MethodCall {
+                object: Box::new(Expr::Identifier("a".to_string())),
+                method: "foo".to_string(),
+                args: vec![],
+            }),
+            method: "bar".to_string(),
+            args: vec![],
+        }
+    );
+}
+
+#[test]
+fn parse_call_on_field() {
+    // obj.field(1, 2) is a method call
+    let expr = parse_single_expr("obj.field(1, 2)");
+    assert_eq!(
+        expr,
+        Expr::MethodCall {
+            object: Box::new(Expr::Identifier("obj".to_string())),
+            method: "field".to_string(),
+            args: vec![Expr::IntLiteral(1), Expr::IntLiteral(2)],
+        }
+    );
+}
