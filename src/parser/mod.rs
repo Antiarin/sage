@@ -65,6 +65,8 @@ impl Parser {
             TokenKind::Let => self.parse_let(),
             TokenKind::Return => self.parse_return(),
             TokenKind::Fn => self.parse_fn(vec![]),
+            TokenKind::For => self.parse_for(),
+            TokenKind::While => self.parse_while(),
             _ => {
                 let expr = self.parse_expr(0)?;
                 Ok(Stmt::Expression(expr))
@@ -296,7 +298,7 @@ impl Parser {
 
             // Postfix: function call
             if op == TokenKind::LParen {
-                if 15 < min_bp {
+                if 17 < min_bp {
                     break;
                 }
                 let args = self.parse_args()?;
@@ -309,7 +311,7 @@ impl Parser {
 
             // Postfix: index access
             if op == TokenKind::LBracket {
-                if 15 < min_bp {
+                if 17 < min_bp {
                     break;
                 }
                 self.advance();
@@ -324,7 +326,7 @@ impl Parser {
 
             // Postfix: field access / method call
             if op == TokenKind::Dot {
-                if 15 < min_bp {
+                if 17 < min_bp {
                     break;
                 }
                 self.advance();
@@ -354,7 +356,7 @@ impl Parser {
 
             // Postfix: safe access
             if op == TokenKind::QuestionDot {
-                if 15 < min_bp {
+                if 17 < min_bp {
                     break;
                 }
                 self.advance();
@@ -460,8 +462,93 @@ impl Parser {
                     expr: Box::new(expr),
                 })
             }
+            TokenKind::If => self.parse_if(),
+            TokenKind::Match => self.parse_match(),
             _ => Err(self.error(format!("Expected expression, found {:?}", self.peek()))),
         }
+    }
+
+    // -- Control flow --
+
+    fn parse_if(&mut self) -> Result<Expr, ParseError> {
+        self.advance(); // consume 'if'
+
+        let condition = self.parse_expr(0)?;
+        let then_block = self.parse_block()?;
+
+        let else_block = if self.at(&TokenKind::Else) {
+            self.advance();
+            if self.at(&TokenKind::If) {
+                // else if -> the else block is a single expression statement containing another if
+                let nested_if = self.parse_if()?;
+                Some(vec![Stmt::Expression(nested_if)])
+            } else {
+                Some(self.parse_block()?)
+            }
+        } else {
+            None
+        };
+
+        Ok(Expr::IfElse {
+            condition: Box::new(condition),
+            then_block,
+            else_block,
+        })
+    }
+
+    fn parse_match(&mut self) -> Result<Expr, ParseError> {
+        self.advance(); // consume 'match'
+
+        let matched = self.parse_expr(0)?;
+        self.expect(&TokenKind::LBrace)?;
+        self.skip_newlines();
+
+        let mut arms = Vec::new();
+        while !self.at(&TokenKind::RBrace) && !self.at(&TokenKind::EOF) {
+            let pattern = self.parse_expr(0)?;
+            self.expect(&TokenKind::FatArrow)?;
+            let body = self.parse_expr(0)?;
+            arms.push(MatchArm { pattern, body });
+
+            // Arms separated by commas or newlines
+            if self.at(&TokenKind::Comma) {
+                self.advance();
+            }
+            self.skip_newlines();
+        }
+
+        self.expect(&TokenKind::RBrace)?;
+        Ok(Expr::Match {
+            expr: Box::new(matched),
+            arms,
+        })
+    }
+
+    fn parse_for(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'for'
+
+        let var = match self.peek().clone() {
+            TokenKind::Identifier(name) => {
+                self.advance();
+                name
+            }
+            _ => return Err(self.error("Expected variable name after 'for'".to_string())),
+        };
+
+        self.expect(&TokenKind::In)?;
+        let iter = self.parse_expr(0)?;
+        let body = self.parse_block()?;
+
+        Ok(Stmt::ForLoop { var, iter, body })
+    }
+
+    fn parse_while(&mut self) -> Result<Stmt, ParseError> {
+        self.advance(); // consume 'while'
+
+        let condition = self.parse_expr(0)?;
+        let body = self.parse_block()?;
+
+        Ok(Stmt::WhileLoop { condition, body })
     }
 
     fn make_binary(&self, left: Expr, op: &TokenKind, right: Expr) -> Expr {
@@ -479,6 +566,7 @@ impl Parser {
             TokenKind::GtEq => BinOp::GtEq,
             TokenKind::And => BinOp::And,
             TokenKind::Or => BinOp::Or,
+            TokenKind::DotDot => BinOp::Range,
             _ => unreachable!("Not a binary operator: {:?}", op),
         };
         Expr::BinaryOp {
@@ -491,7 +579,7 @@ impl Parser {
     // Binding power for prefix (unary) operators
     fn prefix_binding_power(op: &TokenKind) -> u8 {
         match op {
-            TokenKind::Minus | TokenKind::Not => 13,
+            TokenKind::Minus | TokenKind::Not => 15,
             _ => 0,
         }
     }
@@ -501,13 +589,14 @@ impl Parser {
     // Right-associative: right_bp = left_bp - 1
     fn infix_binding_power(op: &TokenKind) -> Option<(u8, u8)> {
         match op {
-            TokenKind::DoubleQuestion => Some((2, 1)), // right-assoc
-            TokenKind::Or => Some((3, 4)),
-            TokenKind::And => Some((5, 6)),
-            TokenKind::Eq | TokenKind::NotEq => Some((7, 8)),
-            TokenKind::Lt | TokenKind::Gt | TokenKind::LtEq | TokenKind::GtEq => Some((7, 8)),
-            TokenKind::Plus | TokenKind::Minus => Some((9, 10)),
-            TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Some((11, 12)),
+            TokenKind::DotDot => Some((1, 2)),
+            TokenKind::DoubleQuestion => Some((4, 3)), // right-assoc
+            TokenKind::Or => Some((5, 6)),
+            TokenKind::And => Some((7, 8)),
+            TokenKind::Eq | TokenKind::NotEq => Some((9, 10)),
+            TokenKind::Lt | TokenKind::Gt | TokenKind::LtEq | TokenKind::GtEq => Some((9, 10)),
+            TokenKind::Plus | TokenKind::Minus => Some((11, 12)),
+            TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Some((13, 14)),
             _ => None,
         }
     }

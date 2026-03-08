@@ -700,3 +700,134 @@ fn parse_multiple_top_level_fns() {
     assert!(matches!(&stmts[0], Stmt::FnDef { name, .. } if name == "foo"));
     assert!(matches!(&stmts[1], Stmt::FnDef { name, .. } if name == "bar"));
 }
+
+// -- Task 6: Control flow --
+
+#[test]
+fn parse_if_else() {
+    let expr = parse_single_expr("if x > 0 {\n    1\n} else {\n    2\n}");
+    assert_eq!(
+        expr,
+        Expr::IfElse {
+            condition: Box::new(Expr::BinaryOp {
+                left: Box::new(Expr::Identifier("x".to_string())),
+                op: BinOp::Gt,
+                right: Box::new(Expr::IntLiteral(0)),
+            }),
+            then_block: vec![Stmt::Expression(Expr::IntLiteral(1))],
+            else_block: Some(vec![Stmt::Expression(Expr::IntLiteral(2))]),
+        }
+    );
+}
+
+#[test]
+fn parse_if_no_else() {
+    let expr = parse_single_expr("if flag {\n    do_stuff()\n}");
+    match expr {
+        Expr::IfElse {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            assert_eq!(*condition, Expr::Identifier("flag".to_string()));
+            assert_eq!(then_block.len(), 1);
+            assert!(else_block.is_none());
+        }
+        other => panic!("Expected IfElse, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_if_else_if() {
+    let expr = parse_single_expr("if a {\n    1\n} else if b {\n    2\n} else {\n    3\n}");
+    match expr {
+        Expr::IfElse {
+            else_block: Some(else_stmts),
+            ..
+        } => {
+            // else branch contains an expression statement wrapping another IfElse
+            assert_eq!(else_stmts.len(), 1);
+            match &else_stmts[0] {
+                Stmt::Expression(Expr::IfElse {
+                    else_block: Some(inner_else),
+                    ..
+                }) => {
+                    assert_eq!(inner_else.len(), 1);
+                }
+                other => panic!("Expected nested IfElse, got {:?}", other),
+            }
+        }
+        other => panic!("Expected IfElse with else, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_for_loop() {
+    let stmts = parse_ok("for i in items {\n    println(i)\n}");
+    match &stmts[0] {
+        Stmt::ForLoop { var, iter, body } => {
+            assert_eq!(var, "i");
+            assert_eq!(*iter, Expr::Identifier("items".to_string()));
+            assert_eq!(body.len(), 1);
+        }
+        other => panic!("Expected ForLoop, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_for_loop_range() {
+    let stmts = parse_ok("for i in 0..10 {\n    println(i)\n}");
+    match &stmts[0] {
+        Stmt::ForLoop { var, iter, .. } => {
+            assert_eq!(var, "i");
+            // 0..10 parses as BinaryOp with DotDot - but we don't have DotDot as a binop yet
+            // For now it's just the expression after 'in'
+            assert!(matches!(iter, Expr::BinaryOp { .. }));
+        }
+        other => panic!("Expected ForLoop, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_while_loop() {
+    let stmts = parse_ok("while count < 10 {\n    process(count)\n}");
+    match &stmts[0] {
+        Stmt::WhileLoop {
+            condition, body, ..
+        } => {
+            assert!(matches!(condition, Expr::BinaryOp { op: BinOp::Lt, .. }));
+            assert_eq!(body.len(), 1);
+        }
+        other => panic!("Expected WhileLoop, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_match_expression() {
+    let expr =
+        parse_single_expr("match x {\n    1 => \"one\"\n    2 => \"two\"\n    _ => \"other\"\n}");
+    match expr {
+        Expr::Match {
+            expr: matched,
+            arms,
+        } => {
+            assert_eq!(*matched, Expr::Identifier("x".to_string()));
+            assert_eq!(arms.len(), 3);
+            assert_eq!(arms[0].pattern, Expr::IntLiteral(1));
+            assert_eq!(arms[0].body, Expr::StringLiteral("one".to_string()));
+            assert_eq!(arms[2].pattern, Expr::Identifier("_".to_string()));
+        }
+        other => panic!("Expected Match, got {:?}", other),
+    }
+}
+
+#[test]
+fn parse_match_with_commas() {
+    let expr = parse_single_expr("match x { 1 => \"a\", 2 => \"b\" }");
+    match expr {
+        Expr::Match { arms, .. } => {
+            assert_eq!(arms.len(), 2);
+        }
+        other => panic!("Expected Match, got {:?}", other),
+    }
+}
